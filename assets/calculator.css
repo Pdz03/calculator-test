@@ -1,0 +1,43 @@
+body {
+    background: #f5f7fa;
+    color: #1f2937;
+}
+
+.card {
+    border: 0;
+    border-radius: 14px;
+}
+
+.layer-card {
+    height: 100%;
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 16px;
+}
+
+.result-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.result-label {
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+
+table {
+    font-size: 0.875rem;
+}
+
+th {
+    white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+    main.container {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+}

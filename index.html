@@ -1,21 +1,213 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculator Panel</title>
 
-    <!-- CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>CLT Floor Panel Properties Calculator</title>
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <link
+        rel="stylesheet"
+        href="./assets/calculator.css"
+    >
 </head>
-<body>
-    <div class="container py-4">
-        <h1 class="mb-4">Calculator Panel</h1>
-        <!-- Write Input On Here -->
-    </div>
 
-    <!-- Script -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="calculator.js"></script>
+<body>
+    <main class="container py-5">
+        <header class="mb-4">
+            <p class="text-uppercase text-primary fw-semibold mb-2">
+                CLT Toolbox
+            </p>
+
+            <h1 class="h2 mb-2">
+                Floor Panel Properties Calculator
+            </h1>
+
+            <p class="text-secondary mb-0">
+                Calculate effective bending stiffness using
+                Shear Analogy or Gamma Method.
+            </p>
+        </header>
+
+        <div
+    id="error-alert"
+    class="alert alert-danger d-none"
+    role="alert"
+    tabindex="-1"
+></div>
+
+        <section class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h2 class="h5 mb-4">Input</h2>
+
+                <form id="calculator-form">
+                    <div class="row g-3">
+                        <div class="col-md-6 col-lg-3">
+                            <label
+                                for="analytical-method"
+                                class="form-label"
+                            >
+                                Analytical Method
+                            </label>
+
+                            <select
+                                id="analytical-method"
+                                class="form-select"
+                            >
+                                <option value="shear-analogy">
+                                    Shear Analogy
+                                </option>
+
+                                <option value="gamma">
+                                    Gamma Method
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6 col-lg-3">
+                            <label
+                                for="layer-count"
+                                class="form-label"
+                            >
+                                Total Layers
+                            </label>
+
+                            <select
+                                id="layer-count"
+                                class="form-select"
+                            ></select>
+                        </div>
+
+                        <div class="col-md-6 col-lg-3">
+                            <label
+                                for="effective-width"
+                                class="form-label"
+                            >
+                                Effective Width
+                            </label>
+
+                            <div class="input-group">
+                                <input
+                                    id="effective-width"
+                                    type="number"
+                                    class="form-control"
+                                    value="1000"
+                                    min="1"
+                                    step="1"
+                                    required
+                                >
+
+                                <span class="input-group-text">
+                                    mm
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6 col-lg-3">
+                            <label
+                                for="panel-length"
+                                class="form-label"
+                            >
+                                Panel Length
+                            </label>
+
+                            <div class="input-group">
+                                <input
+                                    id="panel-length"
+                                    type="number"
+                                    class="form-control"
+                                    value="5"
+                                    min="0.1"
+                                    step="0.1"
+                                    required
+                                >
+
+                                <span class="input-group-text">
+                                    m
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div
+                        class="d-flex justify-content-between align-items-center mb-3"
+                    >
+                        <h3 class="h6 mb-0">
+                            CLT Layer Configuration
+                        </h3>
+
+                        <small class="text-secondary">
+                            Orientations are editable.
+                        </small>
+                    </div>
+
+                    <div
+                        id="layers-container"
+                        class="row g-3"
+                    ></div>
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary mt-4"
+                    >
+                        Calculate Panel Properties
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <section
+            id="output-section"
+            class="card shadow-sm d-none"
+        >
+            <div class="card-body p-4">
+                <h2 class="h5 mb-4">Output</h2>
+
+                <div
+                    id="result-summary"
+                    class="row g-3 mb-4"
+                ></div>
+
+                <div class="table-responsive">
+                    <table
+                        class="table table-bordered table-hover align-middle"
+                    >
+                        <thead class="table-light">
+    <tr>
+        <th>Layer</th>
+        <th>Thickness<br><small class="text-secondary">mm</small></th>
+        <th>Orientation</th>
+        <th>Centroid<br><small class="text-secondary">mm</small></th>
+        <th>Distance<br><small class="text-secondary">mm</small></th>
+        <th>E<br><small class="text-secondary">MPa</small></th>
+        <th>I<br><small class="text-secondary">mm⁴</small></th>
+        <th>A·h²<br><small class="text-secondary">mm⁴</small></th>
+        <th>Gamma</th>
+        <th>EiIi / Bending Stiffness<br><small class="text-secondary">N-mm²/m</small></th>
+    </tr>
+</thead>
+
+                        <tbody id="result-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script
+        type="module"
+        src="./calculator.js"
+    ></script>
 </body>
 </html>
