@@ -166,105 +166,169 @@ class ShearAnalogyMethod {
 class GammaMethod {
     static calculate(cltLayup) {
         const layers = cltLayup.getLayers();
-        const effectiveWidth =
-            cltLayup.effectiveWidth;
-        const panelLengthMm =
-            cltLayup.panelLength * 1000;
+        const effectiveWidth = cltLayup.effectiveWidth;
+        const panelLengthMm = cltLayup.panelLength * 1000;
 
         const totalThickness =
             cltLayup.getTotalThickness();
 
-        const neutralAxis =
-            totalThickness / 2;
-
         let currentPosition = 0;
 
-        const geometricLayers = layers.map((layer) => {
-            const centroid =
-                currentPosition + layer.thickness / 2;
+        const geometricLayers = layers.map(
+            (layer, index) => {
+                const centroid =
+                    currentPosition +
+                    layer.thickness / 2;
 
-            currentPosition += layer.thickness;
+                currentPosition += layer.thickness;
 
-            return {
-                layer,
-                centroid,
-                distance:
-                    Math.abs(centroid - neutralAxis)
-            };
+                return {
+                    index,
+                    layer,
+                    centroid,
+                    gammaCoefficient: 0
+                };
+            }
+        );
+
+        /*
+         * Gamma Method is only applied to longitudinal
+         * layers. Cross layers have E = 0 for bending
+         * in the panel span direction.
+         */
+        geometricLayers.forEach((entry) => {
+            if (entry.layer.orientation !== 0) {
+                entry.gammaCoefficient = 0;
+                return;
+            }
+
+            entry.gammaCoefficient =
+                this.calculateGammaCoefficient({
+                    layers,
+                    layerIndex: entry.index,
+                    panelLengthMm,
+                    effectiveWidth
+                });
         });
 
-        const longitudinalIndexes =
-            geometricLayers
-                .map((entry, index) => ({
-                    ...entry,
-                    index
-                }))
-                .filter(
-                    ({ layer }) =>
-                        layer.orientation === 0
-                );
-
-        const layerProperties =
-            geometricLayers.map(
-                ({ layer, centroid, distance }, index) => {
+        /*
+         * Gamma weighted neutral axis:
+         *
+         * ybar =
+         * Σ(γi × Ei × Ai × yi)
+         * -------------------
+         * Σ(γi × Ei × Ai)
+         */
+        const weightedStiffness =
+            geometricLayers.reduce(
+                (total, entry) => {
                     const elasticModulus =
-                        layer.getElasticModulusForBending();
+                        entry.layer
+                            .getElasticModulusForBending();
 
-                    const localMomentOfInertia =
+                    const area =
                         effectiveWidth *
-                        Math.pow(layer.thickness, 3) /
-                        12;
+                        entry.layer.thickness;
 
-                    const parallelAxisTerm =
-                        effectiveWidth *
-                        layer.thickness *
-                        Math.pow(distance, 2);
-
-                    let gammaCoefficient = 0;
-
-                    if (layer.orientation === 0) {
-                        gammaCoefficient =
-                            this.calculateGammaCoefficient({
-                                layers,
-                                layerIndex: index,
-                                elasticModulus,
-                                panelLengthMm,
-                                effectiveWidth
-                            });
-                    }
-
-                    const bendingStiffness =
-                        elasticModulus *
-                        (
-                            localMomentOfInertia +
-                            gammaCoefficient *
-                            parallelAxisTerm
-                        );
-
-                    return new CLTLayerPropertiesType({
-                        layerIndex: layer.index,
-                        thickness: layer.thickness,
-                        orientation: layer.orientation,
-                        centroid,
-                        distanceToNeutralAxis: distance,
-                        elasticModulus,
-                        localMomentOfInertia,
-                        parallelAxisTerm,
-                        gammaCoefficient,
-                        bendingStiffness
-                    });
-                }
-            );
-
-        const effectiveBendingStiffness =
-            layerProperties.reduce(
-                (total, layer) =>
-                    total + layer.bendingStiffness,
+                    return (
+                        total +
+                        entry.gammaCoefficient *
+                            elasticModulus *
+                            area
+                    );
+                },
                 0
             );
 
+        if (weightedStiffness <= 0) {
+            throw new Error(
+                "Unable to determine Gamma neutral axis."
+            );
+        }
+
+        const weightedFirstMoment =
+            geometricLayers.reduce(
+                (total, entry) => {
+                    const elasticModulus =
+                        entry.layer
+                            .getElasticModulusForBending();
+
+                    const area =
+                        effectiveWidth *
+                        entry.layer.thickness;
+
+                    return (
+                        total +
+                        entry.gammaCoefficient *
+                            elasticModulus *
+                            area *
+                            entry.centroid
+                    );
+                },
+                0
+            );
+
+        const neutralAxis =
+            weightedFirstMoment /
+            weightedStiffness;
+
+        let effectiveBendingStiffness = 0;
+
+        const layerProperties =
+            geometricLayers.map((entry) => {
+                const {
+                    layer,
+                    centroid,
+                    gammaCoefficient
+                } = entry;
+
+                const elasticModulus =
+                    layer.getElasticModulusForBending();
+
+                const distanceToNeutralAxis =
+                    Math.abs(centroid - neutralAxis);
+
+                const localMomentOfInertia =
+                    effectiveWidth *
+                    Math.pow(layer.thickness, 3) /
+                    12;
+
+                const parallelAxisTerm =
+                    effectiveWidth *
+                    layer.thickness *
+                    Math.pow(
+                        distanceToNeutralAxis,
+                        2
+                    );
+
+                const bendingStiffness =
+                    elasticModulus *
+                    (
+                        localMomentOfInertia +
+                        gammaCoefficient *
+                            parallelAxisTerm
+                    );
+
+                effectiveBendingStiffness +=
+                    bendingStiffness;
+
+                return new CLTLayerPropertiesType({
+                    layerIndex: layer.index,
+                    thickness: layer.thickness,
+                    orientation: layer.orientation,
+                    centroid,
+                    distanceToNeutralAxis,
+                    elasticModulus,
+                    localMomentOfInertia,
+                    parallelAxisTerm,
+                    gammaCoefficient,
+                    bendingStiffness
+                });
+            });
+
         return new PanelPropertiesType({
-            analyticalMethod: AnalyticalMethod.GAMMA,
+            analyticalMethod:
+                AnalyticalMethod.GAMMA,
             totalThickness,
             neutralAxis,
             effectiveBendingStiffness,
@@ -275,80 +339,90 @@ class GammaMethod {
     static calculateGammaCoefficient({
         layers,
         layerIndex,
-        elasticModulus,
         panelLengthMm,
         effectiveWidth
     }) {
-        const adjacentCrossLayers = [];
+        const layer = layers[layerIndex];
 
-        if (
-            layerIndex > 0 &&
-            layers[layerIndex - 1].orientation === 90
-        ) {
-            adjacentCrossLayers.push(
-                layers[layerIndex - 1]
-            );
+        if (layer.orientation !== 0) {
+            return 0;
         }
 
-        if (
-            layerIndex < layers.length - 1 &&
-            layers[layerIndex + 1].orientation === 90
-        ) {
-            adjacentCrossLayers.push(
-                layers[layerIndex + 1]
-            );
-        }
+        /*
+         * The middle longitudinal layer is treated
+         * as fully composite.
+         */
+        const middleIndex =
+            Math.floor(layers.length / 2);
 
-        if (adjacentCrossLayers.length === 0) {
+        if (layerIndex === middleIndex) {
             return 1;
         }
 
-        const connectionFlexibility =
-            adjacentCrossLayers.reduce(
-                (total, crossLayer) => {
-                    const rollingShearModulus =
-                        crossLayer.materialGrade
-                            .rollingShearModulus;
+        /*
+         * Find the cross layer adjacent to the
+         * longitudinal layer.
+         */
+        const adjacentIndex =
+            layerIndex < middleIndex
+                ? layerIndex + 1
+                : layerIndex - 1;
 
-                    if (rollingShearModulus <= 0) {
-                        return total;
-                    }
-
-                    return (
-                        total +
-                        crossLayer.thickness /
-                            (
-                                rollingShearModulus *
-                                effectiveWidth
-                            )
-                    );
-                },
-                0
-            );
+        const crossLayer =
+            layers[adjacentIndex];
 
         if (
-            connectionFlexibility <= 0 ||
-            elasticModulus <= 0
+            !crossLayer ||
+            crossLayer.orientation !== 90
         ) {
-            return 1;
+            throw new Error(
+                `Layer ${layer.index} must be adjacent ` +
+                "to a cross layer for Gamma calculation."
+            );
         }
 
-        const longitudinalLayer =
-            layers[layerIndex];
+        const elasticModulus =
+            layer.getElasticModulusForBending();
 
-        const axialStiffness =
-            elasticModulus *
-            effectiveWidth *
-            longitudinalLayer.thickness;
+        const rollingShearModulus =
+            crossLayer.materialGrade
+                .rollingShearModulus;
+
+        if (
+            elasticModulus <= 0 ||
+            rollingShearModulus <= 0
+        ) {
+            throw new Error(
+                "Material stiffness must be greater than zero."
+            );
+        }
+
+        /*
+         * Formula translated from the workbook:
+         *
+         * γ = 1 /
+         *     (
+         *       1 +
+         *       π² E t /
+         *       ((beff / tcross) GR L²)
+         *     )
+         */
+        const denominator =
+            (
+                effectiveWidth /
+                crossLayer.thickness
+            ) *
+            rollingShearModulus *
+            Math.pow(panelLengthMm, 2);
 
         return (
             1 /
             (
                 1 +
                 Math.pow(Math.PI, 2) *
-                    axialStiffness *
-                    connectionFlexibility /
-                    Math.pow(panelLengthMm, 2)
+                    elasticModulus *
+                    layer.thickness /
+                    denominator
             )
         );
     }
